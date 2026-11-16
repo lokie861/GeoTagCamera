@@ -3,6 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Google Maps API key: -PMAPS_API_KEY, local.properties, or MAPS_API_KEY env var (GitHub secret)
+val mapsKey: String = run {
+    val lp = java.util.Properties()
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { lp.load(it) }
+    (project.findProperty("MAPS_API_KEY") as String?)
+        ?: lp.getProperty("MAPS_API_KEY")
+        ?: System.getenv("MAPS_API_KEY")
+        ?: ""
+}
+
 android {
     namespace = "com.geotag.camera"
     compileSdk = 35
@@ -13,6 +24,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsKey\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

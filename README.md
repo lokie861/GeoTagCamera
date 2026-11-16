@@ -21,3 +21,12 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`
 ## Notes
 - minSdk 29 (Android 10+). Needs internet for address, weather and map tile.
 - Address: Android Geocoder. Weather: Open-Meteo (no key). Map: OpenStreetMap tiles.
+
+## Google Maps key
+1. In Google Cloud Console enable **Maps Static API** and create an API key (billing must be on; restrict the key to this API).
+2. GitHub: repo Settings > Secrets and variables > Actions > New secret named `MAPS_API_KEY`.
+   Local build: add `MAPS_API_KEY=your_key` to `local.properties`.
+3. Without a key the app falls back to OpenStreetMap tiles.
+
+## Resolution
+Tap the chip at bottom-left to choose Max, 12/8/5/2/1 MP or VGA. The device uses the closest size it supports.

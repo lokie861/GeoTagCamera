@@ -38,6 +38,11 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.appcompat.app.AlertDialog
+import android.util.Size
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -83,6 +88,18 @@ class MainActivity : AppCompatActivity() {
 
     private var imageCapture: ImageCapture? = null
     private var lensFacing = CameraSelector.LENS_FACING_BACK
+
+    // label -> target size (landscape w x h, 4:3). null = highest available.
+    private val resOptions: List<Pair<String, Size?>> = listOf(
+        "Max (highest available)" to null,
+        "12 MP (4000 x 3000)" to Size(4000, 3000),
+        "8 MP (3264 x 2448)" to Size(3264, 2448),
+        "5 MP (2592 x 1944)" to Size(2592, 1944),
+        "2 MP (1600 x 1200)" to Size(1600, 1200),
+        "1 MP (1280 x 960)" to Size(1280, 960),
+        "VGA (640 x 480)" to Size(640, 480)
+    )
+    private var selectedRes = 0
 
     private lateinit var locationManager: LocationManager
     private var lastLocation: Location? = null
@@ -137,6 +154,19 @@ class MainActivity : AppCompatActivity() {
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
 
         findViewById<View>(R.id.btnCapture).setOnClickListener { takePhoto() }
+        val btnRes = findViewById<TextView>(R.id.btnRes)
+        btnRes.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Photo resolution")
+                .setSingleChoiceItems(resOptions.map { it.first }.toTypedArray(), selectedRes) { d, which ->
+                    selectedRes = which
+                    btnRes.text = resOptions[which].first.substringBefore(" (")
+                    d.dismiss()
+                    startCamera()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
         findViewById<ImageButton>(R.id.btnSwitch).setOnClickListener {
             lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
                 CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
@@ -184,8 +214,16 @@ class MainActivity : AppCompatActivity() {
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
+            val target = resOptions[selectedRes].second
+            val strategy = if (target == null) ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY
+            else ResolutionStrategy(target, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
+            val selector = ResolutionSelector.Builder()
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                .setResolutionStrategy(strategy)
+                .build()
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .setResolutionSelector(selector)
                 .build()
             imageCapture = capture
             try {
@@ -327,7 +365,8 @@ class MainActivity : AppCompatActivity() {
             temp = "%.0f°C".format(Locale.US, cur.getDouble("temperature_2m"))
         } catch (_: Exception) {}
 
-        val map = try { fetchMap(lat, lon) } catch (_: Exception) { null }
+        val map = (try { fetchGoogleMap(lat, lon) } catch (_: Exception) { null })
+            ?: (try { fetchMap(lat, lon) } catch (_: Exception) { null })
         return GeoInfo(lat, lon, address, map, wind, pressure, humidity, temp)
     }
 
@@ -347,7 +386,17 @@ class MainActivity : AppCompatActivity() {
         return try { c.inputStream.use { BitmapFactory.decodeStream(it) } } finally { c.disconnect() }
     }
 
-    /** Fetches 2x2 OpenStreetMap tiles around the point and crops a 256px square centred on it, pin included. */
+    /** Google Static Maps image (800x800) with an orange marker at the location. Needs MAPS_API_KEY. */
+    private fun fetchGoogleMap(lat: Double, lon: Double): Bitmap? {
+        val key = BuildConfig.MAPS_API_KEY
+        if (key.isBlank()) return null
+        val url = "https://maps.googleapis.com/maps/api/staticmap?center=$lat,$lon&zoom=17" +
+            "&size=400x400&scale=2&maptype=roadmap" +
+            "&markers=color:orange%7C$lat,$lon&key=$key"
+        return httpGetBitmap(url)
+    }
+
+    /** Fallback: fetches 2x2 OpenStreetMap tiles around the point and crops a 256px square centred on it, pin included. */
     private fun fetchMap(lat: Double, lon: Double): Bitmap? {
         val z = 16
         val n = 2.0.pow(z)
